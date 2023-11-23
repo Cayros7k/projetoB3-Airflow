@@ -17,9 +17,12 @@ def b3():
     @task()
     def extract_and_process_data():
         Ano = 2018
+        id_counter = 1
+
         while Ano <= 2023:
 
-            print("Iniciando procedimento no ano "+str(Ano)+"...")  
+            print("Iniciando procedimento no ano "+str(Ano)+"...")
+
             #URL do arquivo ZIP para baixar baixar
             url = "https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A" + str(Ano) + ".ZIP"
 
@@ -71,6 +74,10 @@ def b3():
                 "num_distribuicao_papel"
                 ]
 
+                #Adicionar a coluna ID Auto Increment
+                dados_acoes['id_pregao'] = range(id_counter, id_counter + len(dados_acoes))
+                id_counter += len(dados_acoes)
+                
                 linha=len(dados_acoes["data_pregao"])
                 dados_acoes=dados_acoes.drop(linha-1)
 
@@ -93,6 +100,16 @@ def b3():
 
                 dados_acoes['data_pregao'] = pd.to_datetime(dados_acoes.data_pregao)
                 dados_acoes['data_pregao'] = dados_acoes['data_pregao'].dt.strftime('%d/%m/%Y')
+
+                dados_semF = dados_acoes[~dados_acoes['cod_negociacao'].str.endswith('F')]
+
+                dados_pregao = dados_semF[['id_pregao', 'cod_isin', 'cod_bdi', 'data_pregao', 'preco_melhor_oferta_compra', 'preco_melhor_oferta_venda', 'moeda_referencia', 'numero_negocios',  
+                                        'preco_abertura', 'preco_maximo', 'preco_medio', 'preco_minimo', 'preco_ultimo_negocio' , 'tipo_mercado', 'tipo_registro', 'volume_total_negociado']]
+
+                dados_empresas = dados_semF[['nome_empresa', 'cod_negociacao']].drop_duplicates() 
+
+                dados_papeis = dados_semF[['especificacao_papel', 'num_distribuicao_papel']].drop_duplicates()
+
                 print("Arquivo do ano "+str(Ano)+" tratado")
                 print("Filtrando arquivo...")
 
@@ -122,7 +139,7 @@ def b3():
         conn = hook.get_conn()
         cur = conn.cursor()
 
-        for item in dados_acoes:
+        for item in dados_acoes(orient="records"):
             query = f"""
             """
             print(query)

@@ -7,9 +7,11 @@ import pandas as pd
 
 def process_data():
     Ano = 2018
-    while Ano <= 2023:
+    id_counter = 1
 
+    while Ano <= 2023:
         print("Iniciando procedimento no ano "+str(Ano)+"...")  
+        
         #URL do arquivo ZIP para baixar baixar
         url = "https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A" + str(Ano) + ".ZIP"
 
@@ -32,6 +34,7 @@ def process_data():
             
             dados_acoes = pd.read_fwf(BytesIO(extracted_file_content), widths=tamanho_campos, header=0)
 
+            
             dados_acoes.columns = [    
             "tipo_registro",
             "data_pregao",
@@ -57,9 +60,12 @@ def process_data():
             "data_vencimento",
             "fator_cotacao",
             "preco_exercicio_pontos",
-            "codigo_isin",
+            "cod_isin",
             "num_distribuicao_papel"
             ]
+            
+            dados_acoes['id_pregao'] = range(id_counter, id_counter + len(dados_acoes))
+            id_counter += len(dados_acoes)
 
             linha=len(dados_acoes["data_pregao"])
             dados_acoes=dados_acoes.drop(linha-1)
@@ -83,10 +89,20 @@ def process_data():
 
             dados_acoes['data_pregao'] = pd.to_datetime(dados_acoes.data_pregao)
             dados_acoes['data_pregao'] = dados_acoes['data_pregao'].dt.strftime('%d/%m/%Y')
+
+            dados_semF = dados_acoes[~dados_acoes['cod_negociacao'].str.endswith('F')]
+
+            dados_pregao = dados_semF[['id_pregao', 'cod_isin', 'cod_bdi', 'data_pregao', 'preco_melhor_oferta_compra', 'preco_melhor_oferta_venda', 'moeda_referencia', 'numero_negocios',  
+                                       'preco_abertura', 'preco_maximo', 'preco_medio', 'preco_minimo', 'preco_ultimo_negocio' , 'tipo_mercado', 'tipo_registro', 'volume_total_negociado']]
+
+            dados_empresas = dados_semF[['nome_empresa', 'cod_negociacao']].drop_duplicates() 
+
+            dados_papeis = dados_semF[['especificacao_papel', 'num_distribuicao_papel']].drop_duplicates()       
+
             print("Arquivo do ano "+str(Ano)+" tratado")
             print("Filtrando arquivo...")
 
-            print (dados_acoes.head())
+            print (dados_pregao.head())
 
             zip_file.close()
 
