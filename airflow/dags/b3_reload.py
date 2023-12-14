@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from datetime import datetime, timedelta
 
 # Define a DAG com agendamento e configurações específicas.
+# A DAG está agendada para executar todos os dias úteis às 22h UTC (19h - Brasília).
 @dag(
     schedule='0 22 * * *',
     start_date=pendulum.datetime(2023, 12, 1),
@@ -66,6 +67,7 @@ def b3_reload():
         # Se o response retornar o status 200, ele começa a etapa de processamento dos dados.
         if response.status_code == 200:
 
+            # Processo de extração e utilização do arquivo TXT.
             zip_file = zipfile.ZipFile(BytesIO(response.content))
 
             file_list = zip_file.namelist()
@@ -110,6 +112,7 @@ def b3_reload():
             "num_distribuicao_papel"
             ]
             
+            # Remove o rodapé presente no documento.
             linha=len(dados_acoes["data_pregao"])
             dados_acoes=dados_acoes.drop(linha-1)
 
@@ -149,28 +152,71 @@ def b3_reload():
         conn = hook.get_conn()
         cur = conn.cursor()
         try:
-            # Estabelece conexão com o banco de dados PostgreSQL e carrega os dados na tabela 'stage'
+            # Estabelece conexão com o banco de dados PostgreSQL e carrega os dados na tabela 'stage'.
             engine = create_engine("postgresql+psycopg2://airflow:airflow@host.docker.internal/airflow")
+            # Utilizando o to_sql() para enviar mais rapidamente todos os registros do dataframe para a tabela 'stage'. 
             dados_acoes.to_sql(name='stage', con=engine, if_exists='append', index=False)
             conn.commit()
             cur.close()
         except Exception as e:
             print(e)
     
+    # Função que irá construir um dataframe com os dados necessários para a tabela 'calendar'
+    def tableCalendar():
+        # start_date definido para o começo do ano presente nos dados extraídos.
+        start_date = datetime(2018, 1, 1)
+        # end_date definido para o momento atual, fazendo assim uma atualização contínua para o dia atual.
+        end_date = datetime.now()
+        calendar_data = []
+
+        current_date = start_date
+        while current_date <= end_date:
+            year = current_date.year
+            quarter = (current_date.month - 1) // 3 + 1
+            month = current_date.month
+            day = current_date.day
+
+            calendar_data.append((current_date, year, quarter, month, day))
+
+            current_date += timedelta(days=1)
+        return calendar_data
+    
+    calendar_data = tableCalendar()
+    # Definição das colunas.
+    columns = ['date', 'year', 'quarter', 'month', 'day']
+    # Transformação para um Dataframe.
+    df_calendar = pd.DataFrame(calendar_data, columns=columns)
+    # Ajuste da coluna 'date' para o tipo Date.
+    df_calendar['date'] = df_calendar['date'].dt.strftime('%Y-%m-%d')
+    
     # Tarefa que recria as estruturas das tabelas dimensões e tabela fato.
-    @task()
+    @task()      
+            
     def recreateTables():
+
         hook = PostgresHook(postgres_conn_id='postgres-airflow')
         conn = hook.get_conn()
         cur = conn.cursor()
         # Se existir, deleta as tabelas especificadas em cascata (excluindo as relações).
         cur.execute("""
+                    DROP TABLE IF EXISTS dim_calendar CASCADE;
                     DROP TABLE IF EXISTS dim_tipo_mercado CASCADE;
                     DROP TABLE IF EXISTS dim_empresas CASCADE;
                     DROP TABLE IF EXISTS dim_papeis CASCADE;
                     DROP TABLE IF EXISTS dim_cod_bdi CASCADE;
                     DROP TABLE IF EXISTS fato_pregao CASCADE;
-                    """)
+        """)
+        conn.commit()
+        # Cria a estrutura da tabela dimensão dim_calendar.
+        cur.execute("""
+                    CREATE TABLE dim_calendar (
+                    date DATE PRIMARY KEY,
+                    year INT,
+                    quarter INT,
+                    month INT,
+                    day INT
+                    )
+        """)
         conn.commit()
         # Cria a estrutura da tabela dimensão dim_tipo_mercado.
         cur.execute("""
@@ -213,7 +259,7 @@ def b3_reload():
                 tipo_mercado bigint REFERENCES dim_tipo_mercado(tipo_mercado),
                 cod_negociacao varchar(255) REFERENCES dim_empresas(cod_negociacao), 
                 especificacao_papel varchar(255) REFERENCES dim_papeis(especificacao_papel), 
-                data_pregao date, 
+                data_pregao date REFERENCES dim_calendar(date), 
                 preco_melhor_oferta_compra decimal, 
                 preco_melhor_oferta_venda decimal, 
                 moeda_referencia varchar(255), 
@@ -236,6 +282,16 @@ def b3_reload():
         hook = PostgresHook(postgres_conn_id='postgres-airflow')
         conn = hook.get_conn()
         cur = conn.cursor()
+        
+        # Insere os dados gerados na função tableCalendar() na tabela dim_calendar.
+        try:
+            # Estabelece conexão com o banco de dados PostgreSQL e carrega os dados na tabela 'stage'
+            engine = create_engine("postgresql+psycopg2://airflow:airflow@host.docker.internal/airflow")
+            df_calendar.to_sql(name='dim_calendar', con=engine, if_exists='append', index=False)
+            conn.commit()          
+        except Exception as e:
+            print(e)
+
         # Faz inserção na tabela dimensão dim_tipo_mercado utilizando o 'DISTINCT' para pegar remover duplicatas.    
         cur.execute("""
             INSERT INTO dim_tipo_mercado (
@@ -371,5 +427,4 @@ def b3_reload():
 
     # Define a ordem em que as Tasks serão executadas.
     recreateTables1 >> extract_process_day1 >> reLoad1
-
 b3_reload()
