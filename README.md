@@ -13,7 +13,7 @@ A DAG 'b3_reload' é de uso diário. Ela será responsável por atualizar os dad
 
 Este projeto consiste em um trabalho acadêmico. Vale ressaltar que estou no começo do meu aprendizado, então poderá haver erros ou redundâncias no código.
 
-# Comandos importantes:
+# COMANDOS IMPORTANTES:
 
 Para utilizar o ambiente virtual:
 - python -m venv .venv
@@ -25,7 +25,7 @@ Para baixar as frameworks utilizadas:
 Para executar o arquivo docker-compose.yml:
 - docker-compose up -d 
 
-# IMPORTANTE!!
+# IMPORTANTE !
 
 Lembre-se sempre de alterar o caminho da pasta 'airflow' no arquivo '.env' com base no seu local de trabalho.
 
